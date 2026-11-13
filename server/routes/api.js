@@ -3,6 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { User } from '../models/User.js';
 import { Resource } from '../models/Resource.js';
+import { Task } from '../models/Task.js';
 import { signUser, requireAuth, requireAdmin } from '../engines/web/auth.js';
 import { ok, fail } from '../engines/web/ApiResponse.js';
 
@@ -56,6 +57,19 @@ export function apiRouter(searchEngine) {
         faculty: counts[3],
         academicResources: counts[4]
       });
+    } catch (error) { return next(error); }
+  });
+  router.get('/admin/tasks', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const tasks = await Task.find().sort({ arrivalTime: -1 }).limit(50).lean();
+      return ok(res, tasks);
+    } catch (error) { return next(error); }
+  });
+  router.post('/admin/index/rebuild', requireAuth, requireAdmin, async (req, res, next) => {
+    try {
+      const resources = await Resource.find({ status: { $ne: 'expired' } }).lean();
+      resources.forEach((resource) => searchEngine.add(resource));
+      return ok(res, { indexedResources: resources.length, message: 'Search index rebuilt successfully.' });
     } catch (error) { return next(error); }
   });
   router.post('/resources', requireAuth, requireAdmin, async (req, res, next) => {

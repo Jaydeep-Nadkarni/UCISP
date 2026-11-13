@@ -17,16 +17,37 @@ const categories = [
 function AdminDashboard({ token, onBack }) {
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [tasks, setTasks] = useState([]);
+  const headers = { Authorization: `Bearer ${token}` };
   useEffect(() => {
-    api.get('/admin/dashboard', { headers: { Authorization: `Bearer ${token}` } })
+    api.get('/admin/dashboard', { headers })
       .then(({ data }) => setDashboard(data.data))
       .catch((requestError) => setError(requestError.response?.data?.error || 'Unable to load dashboard.'));
   }, [token]);
+  const action = async (type) => {
+    setMessage('');
+    try {
+      if (type === 'tasks') {
+        const { data } = await api.get('/admin/tasks', { headers });
+        setTasks(data.data);
+        setMessage(`${data.data.length} indexing task(s) loaded.`);
+      } else if (type === 'rebuild') {
+        const { data } = await api.post('/admin/index/rebuild', {}, { headers });
+        setMessage(`${data.data.message} ${data.data.indexedResources} resources indexed.`);
+      } else {
+        setMessage('Resource management is available through the category navigation.');
+        onBack();
+      }
+    } catch (requestError) {
+      setMessage(requestError.response?.data?.error || 'Action failed. Please try again.');
+    }
+  };
   return <div className="admin-page">
     <div className="admin-page-header"><div><span className="eyebrow">ADMINISTRATION</span><h1>Dashboard</h1><p>Manage and monitor campus information.</p></div><button className="back-button" onClick={onBack}>Back to campus</button></div>
     {error && <div className="notice-error">{error}</div>}
     {dashboard && <div className="stats-grid">{[['Total resources', dashboard.totalResources], ['Notices', dashboard.notices], ['Placements', dashboard.placements], ['Events', dashboard.events], ['Faculty availability', dashboard.faculty], ['Academic resources', dashboard.academicResources]].map(([label, value]) => <div className="stat-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>}
-    <div className="admin-card"><h2>Quick actions</h2><p>Resource management and indexing controls are ready for the administrator panel.</p><div className="admin-actions"><button>Manage resources</button><button>View indexing tasks</button><button>Rebuild search index</button></div></div>
+    <div className="admin-card"><h2>Quick actions</h2><p>Use these controls to manage and verify the live search system.</p><div className="admin-actions"><button onClick={() => action('resources')}>Manage resources</button><button onClick={() => action('tasks')}>View indexing tasks</button><button onClick={() => action('rebuild')}>Rebuild search index</button></div>{message && <div className="action-message">{message}</div>}{tasks.length > 0 && <div className="task-list">{tasks.map((task) => <div key={task._id}><span>{task.taskType}</span><b>{task.status}</b></div>)}</div>}</div>
   </div>;
 }
 
@@ -51,6 +72,7 @@ function App() {
   const [login, setLogin] = useState({ email: 'admin@example.com', password: 'Admin@123' });
   const [loginMessage, setLoginMessage] = useState('');
   const [adminToken, setAdminToken] = useState(() => localStorage.getItem('ucisp_token'));
+  const [sortNewest, setSortNewest] = useState(true);
 
   useEffect(() => {
     api.get('/resources').then(({ data }) => setResources(data.data)).catch(() => setError('Connect the API and seed sample data to see campus information.'));
@@ -68,7 +90,12 @@ function App() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const visible = useMemo(() => active === 'all' ? resources : resources.filter((resource) => resource.category === active), [active, resources]);
+  const visible = useMemo(() => {
+    const filtered = active === 'all' ? resources : resources.filter((resource) => resource.category === active);
+    return [...filtered].sort((a, b) => sortNewest
+      ? new Date(b.publishedAt) - new Date(a.publishedAt)
+      : new Date(a.publishedAt) - new Date(b.publishedAt));
+  }, [active, resources, sortNewest]);
   const selectCategory = (category) => { setActive(category); setQuery(''); setMenuOpen(false); };
   const formatDate = (value) => value && !Number.isNaN(new Date(value).getTime())
     ? new Date(value).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
@@ -98,7 +125,7 @@ function App() {
         <div className="hero-search"><Search size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes, events, placements, faculty..." /><button onClick={() => setQuery(query.trim())}>Search</button></div>
         <div className="quick-links">{categories.slice(1).map(([label, key, Icon]) => <button key={key} onClick={() => selectCategory(key)}><Icon size={16} />{label}</button>)}</div>
       </div><div className="campus-art"><div className="art-building"><span>COLLEGE</span><b>UCISP</b></div><div className="art-sun" /></div></section>
-      <section className="content-section"><div className="section-heading"><div><span className="eyebrow">DISCOVER</span><h2>{active === 'all' ? 'Campus information' : categories.find((item) => item[1] === active)?.[0]}</h2></div><button className="sort-button">Sort by: Latest <ChevronDown size={16} /></button></div>
+      <section className="content-section"><div className="section-heading"><div><span className="eyebrow">DISCOVER</span><h2>{active === 'all' ? 'Campus information' : categories.find((item) => item[1] === active)?.[0]}</h2></div><button className="sort-button" onClick={() => setSortNewest(!sortNewest)}>Sort by: {sortNewest ? 'Latest' : 'Oldest'} <ChevronDown size={16} /></button></div>
         {error && <div className="notice-error">{error}</div>}
         {!error && <div className="resource-grid">{visible.map((resource) => <ResourceCard key={resource._id} resource={resource} onOpen={setSelected} />)}</div>}
         {!error && !visible.length && <div className="empty-state">No information found for this category.</div>}
