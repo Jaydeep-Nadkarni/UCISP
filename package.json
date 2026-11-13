@@ -1,0 +1,11 @@
+{
+  "name": "ucisp",
+  "private": true,
+  "scripts": {
+    "test": "npm --prefix server test",
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
